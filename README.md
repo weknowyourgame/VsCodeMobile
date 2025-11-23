@@ -1,4 +1,10 @@
-## VS Code Mobile
+# VS Code Mobile
+
+<div style="display: flex; gap: 10px;">
+  <img src="https://github.com/user-attachments/assets/55ffbc4a-6dd8-4c6c-831b-664773699afe" width="300">
+  <img src="https://github.com/user-attachments/assets/81196115-74ca-415f-9e24-76d7e174c642" width="300">
+  <img src="https://github.com/user-attachments/assets/88dcecc4-0009-42a2-b5e8-89d5af50ce07" width="300">
+</div>
 
 This repository includes a React Native mobile application that runs VS Code Web on iOS and Android devices using native WebView components. The mobile app is located in the `VsCodeMobile/` directory.
 
