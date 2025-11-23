@@ -50,46 +50,64 @@ config.server = {
 							}
 						}
 
-						// Determine MIME type
 						const ext = path.extname(filePath).toLowerCase();
 
-						// SPECIAL HANDLING: Convert CSS files to JavaScript modules
-						// when requested as ES modules (import './something.css')
-						// But serve normal CSS for <link> tag requests
-						//
-						// Detection: Check if the referer is the HTML file (link tag)
-						// vs a JS file (ES module import)
-						const referer = req.headers.referer || req.headers.referrer || '';
-						const isHtmlReferer = referer.includes('index.html') || referer.endsWith('/vscode-web/');
-						const isLinkTagRequest = isHtmlReferer && !req.headers.accept?.includes('application/javascript');
+						if (ext === '.css') {
+							const referer = req.headers.referer || req.headers.referrer || '';
+							const accept = req.headers.accept || '';
 
-						if (ext === '.css' && !isLinkTagRequest) {
-							console.log(`[Metro] Converting CSS to JS module: ${relativePath}`);
-							res.writeHead(200, {
-								'Content-Type': 'application/javascript; charset=utf-8',
-								'Access-Control-Allow-Origin': '*',
-								'Access-Control-Allow-Methods': 'GET, OPTIONS',
-								'Access-Control-Allow-Headers': 'Content-Type',
-								'Cache-Control': 'no-cache'
-							});
-							// Return an ES module that injects the CSS
-							try {
-								const cssContent = fs.readFileSync(filePath, 'utf-8');
-								// Escape backticks and ${} in CSS content
-								const escapedCss = cssContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-								const jsContent = `// CSS Module: ${relativePath}
-const css = \`${escapedCss}\`;
+							const isHtmlReferer = referer.includes('index.html') || referer.endsWith('/vscode-web/');
+							const explicitlyWantsCss = accept.includes('text/css') && !accept.includes('*/*') && !accept.includes('application/javascript');
+							const isLinkTagRequest = isHtmlReferer && explicitlyWantsCss;
+
+							if (!isLinkTagRequest) {
+								try {
+									let cssContent = fs.readFileSync(filePath, 'utf-8');
+
+									const cssDir = path.dirname(relativePath);
+									const baseUrl = '/vscode-web/' + cssDir + '/';
+
+									cssContent = cssContent.replace(
+										/url\((['"]?)\.\/([^'")]+)\1\)/g,
+										(match, quote, file) => `url(${quote}${baseUrl}${file}${quote})`
+									);
+
+									cssContent = cssContent.replace(
+										/url\((['"])([^'":\)]+)\1\)/g,
+										(match, quote, file) => {
+											if (file.startsWith('http://') || file.startsWith('https://') || file.startsWith('data:') || file.startsWith('/')) {
+												return match;
+											}
+											return `url(${quote}${baseUrl}${file}${quote})`;
+										}
+									);
+
+									const escapedCss = cssContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+									const jsContent = `const css = \`${escapedCss}\`;
 const style = document.createElement('style');
 style.textContent = css;
 document.head.appendChild(style);
 export default {};
 `;
-								res.end(jsContent);
-							} catch (err) {
-								console.error(`[Metro] Error reading CSS file: ${filePath}`, err);
-								res.end('export default {};');
+									res.writeHead(200, {
+										'Content-Type': 'application/javascript; charset=utf-8',
+										'Access-Control-Allow-Origin': '*',
+										'Access-Control-Allow-Methods': 'GET, OPTIONS',
+										'Access-Control-Allow-Headers': 'Content-Type',
+										'Cache-Control': 'no-cache'
+									});
+									res.end(jsContent);
+									return;
+								} catch (err) {
+									console.error(`[Metro] Error reading CSS file: ${filePath}`, err);
+									res.writeHead(200, {
+										'Content-Type': 'application/javascript; charset=utf-8',
+										'Access-Control-Allow-Origin': '*'
+									});
+									res.end('export default {};');
+									return;
+								}
 							}
-							return;
 						}
 
 						const mimeTypes = {
